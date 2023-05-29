@@ -1,7 +1,5 @@
 [project]
-dependencies = [
-  "serial"
-]
+name = "scratch"
 
 [tool.poetry]
 name = "python-template"
