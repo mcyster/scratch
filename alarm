@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """
-Example for Adafruit USB tower light w/alarm
-don't forge to  or .gitignore
+Adafruit USB tower light w/alarm
 """
 
 import serial
 import time
+import argparse
 from enum import Enum
 from flask import Flask, request, jsonify
 
@@ -91,6 +91,97 @@ def off():
     alarm.off()
   return jsonify({})
 
-if __name__ == '__main__':
-  app.run(host='0.0.0.0')
+class Action:
+  def __init__(self):
+    pass
 
+class AlarmAction(Action):
+  def __init__(self, mode, operation):
+    super().__init__()
+    self._mode = mode
+    self._operation = operation
+
+  def perform(self, alarm):
+    with Alarm() as alarm:
+      alarm.sendCommand(self._mode, self._operation)
+
+class AlarmOffAction(Action):
+  def __init__(self):
+    super().__init__()
+
+  def perform(self, alarm):
+    alarm.off()
+
+class DelayAction(Action):
+  def __init__(self, delay):
+    super().__init__()
+    self._delay = delay
+
+  def perform(self, alarm):
+    time.sleep(self._delay)
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('sequence', help='Sequence to perform: RrGgYyoN R red on, N delay seconds', nargs="?", default='')
+  parser.add_argument('--device', help='Device to which Alarm is attached', default='/dev/ttyUSB0')
+  parser.add_argument('--red', help='Red LED', default='off')
+  parser.add_argument('--yellow', help='Yellow LED', default='off')
+  parser.add_argument('--green', help='Green LED', default='off')
+  parser.add_argument('--buzzer', help='Buzzer', default='off')
+  parser.add_argument('--web', help='Start web server', action='store_true', default=False)
+
+  args = parser.parse_args()
+
+  sequence = []
+  if args.red:
+    if args.red.lower() == "on":
+      sequence.append(AlarmAction(AlarmMode.RED, AlarmOperation.ON))
+    else:
+      sequence.append(AlarmAction(AlarmMode.RED, AlarmOperation.OFF))
+
+    if args.yellow.lower() == "on":
+      sequence.append(AlarmAction(AlarmMode.YELLOW, AlarmOperation.ON))
+    else:
+      sequence.append(AlarmAction(AlarmMode.YELLOW, AlarmOperation.OFF))
+
+    if args.green.lower() == "on":
+      sequence.append(AlarmAction(AlarmMode.GREEN, AlarmOperation.ON))
+    else:
+      sequence.append(AlarmAction(AlarmMode.GREEN, AlarmOperation.OFF))
+
+    if args.buzzer.lower() == "on":
+      sequence.append(AlarmAction(AlarmMode.BUZZER, AlarmOperation.ON))
+    else:
+      sequence.append(AlarmAction(AlarmMode.BUZZER, AlarmOperation.OFF))
+
+  for character in args.sequence:
+    if character == 'R':
+      sequence.append(AlarmAction(AlarmMode.RED, AlarmOperation.ON))
+    elif character == 'r':
+      sequence.append(AlarmAction(AlarmMode.RED, AlarmOperation.OFF))
+    elif character == 'Y':
+      sequence.append(AlarmAction(AlarmMode.YELLOW, AlarmOperation.ON))
+    elif character == 'y':
+      sequence.append(AlarmAction(AlarmMode.YELLOW, AlarmOperation.OFF))
+    elif character == 'G':
+      sequence.append(AlarmAction(AlarmMode.GREEN, AlarmOperation.ON))
+    elif character == 'g':
+      sequence.append(AlarmAction(AlarmMode.GREEN, AlarmOperation.OFF))
+    elif character == 'B':
+      sequence.append(AlarmAction(AlarmMode.BUZZER, AlarmOperation.ON))
+    elif character == 'b':
+      sequence.append(AlarmAction(AlarmMode.BUZZER, AlarmOperation.OFF))
+    elif character == 'o':
+      sequence.append(AlarmOffAction())
+    elif character.isdigit():
+      sequence.append(DelayAction(int(character)))
+
+  with Alarm() as alarm:
+    for action in sequence:
+      action.perform(alarm)
+
+  if args.web:
+    app.run(host='0.0.0.0')
+
+if __name__ == '__main__':
+  main()
