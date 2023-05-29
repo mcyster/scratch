@@ -1,5 +1,5 @@
 # scratch
 
 poetry install
-poerty update
+poetry update
 poetry run python alarm
