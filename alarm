@@ -6,6 +6,7 @@ don't forge to  or .gitignore
 
 import serial
 import time
+from enum import Enum
 from flask import Flask, request
 
 serialPort = 'COM57'  # Change to the serial/COM port of the tower light
@@ -28,13 +29,26 @@ BUZZER_ON = 0x18
 BUZZER_OFF = 0x28
 BUZZER_BLINK = 0x48
 
-class Serial:
-  def __init__(self, baudRate = 9600): 
-    self._serial = None
+class AlarmOperation(Enum):
+  ON = 0x10
+  OFF = 0x20
+  BLINK = 0x40
 
-  def sendCommand(self, command):
+class AlarmMode(Enum):
+  RED = 0x01
+  YELLOW = 0x02
+  GREEN = 0x04
+  BUZZER = 0x08
+
+class Alarm:
+  def __init__(self, serial = None, baudRate = 9600): 
+    self._serial = serial
+
+  def sendCommand(self, mode, operation):
+    command = operation.value | mode.value
+
     if self._serial is None:
-      print("serial command:", command)
+      print("serial command:", hex(command))
     else:
       self._serial.write(bytes([cmd]))
 
@@ -52,11 +66,17 @@ app = Flask(__name__)
 app.secret_key = 's3cr3t'
 app.config['SESSION_TYPE'] = 'filesystem'
 
+print("RED", int(AlarmMode.RED.value))
 @app.route('/alarm', methods=['POST'])
 def alarm():
+  melody = [0.5, 0.5, 0.5, 0.5, 1, 0.5, 0.5, 1] 
   print("ALARM")
-  with Serial() as serial:
-    serial.sendCommand(RED_ON)
+  with Alarm(serial = serial) as alarm:
+    for duration in melody:
+      alarm.sendCommand(AlarmMode.BUZZER, AlarmOperation.ON)
+      time.sleep(duration)
+      alarm.sendCommand(AlarmMode.BUZZER, AlarmOperation.OFF)
+      time.sleep(0.1)  
   return "BUZZ"
 
 
