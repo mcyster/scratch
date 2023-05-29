@@ -7,27 +7,11 @@ don't forge to  or .gitignore
 import serial
 import time
 from enum import Enum
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
 serialPort = 'COM57'  # Change to the serial/COM port of the tower light
 #serialPort = '/dev/USBserial0'  # on mac/linux, it will be a /dev path
 baudRate = 9600
-
-RED_ON = 0x11
-RED_OFF = 0x21
-RED_BLINK = 0x41
-
-YELLOW_ON= 0x12
-YELLOW_OFF = 0x22
-YELLOW_BLINK = 0x42
-
-GREEN_ON = 0x14
-GREEN_OFF = 0x24
-GREEN_BLINK = 0x44
-
-BUZZER_ON = 0x18
-BUZZER_OFF = 0x28
-BUZZER_BLINK = 0x48
 
 class AlarmOperation(Enum):
   ON = 0x10
@@ -41,8 +25,8 @@ class AlarmMode(Enum):
   BUZZER = 0x08
 
 class Alarm:
-  def __init__(self, serial = None, baudRate = 9600): 
-    self._serial = serial
+  def __init__(self, port = "/dev/ttyUSB0", baudRate = 9600): 
+    self._serial = serial.Serial(port, baudRate)
 
   def sendCommand(self, mode, operation):
     command = operation.value | mode.value
@@ -50,7 +34,13 @@ class Alarm:
     if self._serial is None:
       print("serial command:", hex(command))
     else:
-      self._serial.write(bytes([cmd]))
+      self._serial.write(bytes([command]))
+
+  def off(self):
+    self.sendCommand(AlarmMode.RED, AlarmOperation.OFF)
+    self.sendCommand(AlarmMode.YELLOW, AlarmOperation.OFF)
+    self.sendCommand(AlarmMode.GREEN, AlarmOperation.OFF)
+    self.sendCommand(AlarmMode.BUZZER, AlarmOperation.OFF)
 
   def __enter__(self):
     #self._serial = serial.Serial(serialPort, baudRate)
@@ -58,27 +48,48 @@ class Alarm:
     
   def __exit__(self, type, value, traceback):
     if self._serial is None:
-      print("serial closed")
+        print("serial closed")
     else:    
       self._serial.close()
+
+with Alarm() as alarm:
+  alarm.off()
 
 app = Flask(__name__)
 app.secret_key = 's3cr3t'
 app.config['SESSION_TYPE'] = 'filesystem'
 
-print("RED", int(AlarmMode.RED.value))
-@app.route('/alarm', methods=['POST'])
-def alarm():
-  melody = [0.5, 0.5, 0.5, 0.5, 1, 0.5, 0.5, 1] 
-  print("ALARM")
-  with Alarm(serial = serial) as alarm:
-    for duration in melody:
-      alarm.sendCommand(AlarmMode.BUZZER, AlarmOperation.ON)
-      time.sleep(duration)
-      alarm.sendCommand(AlarmMode.BUZZER, AlarmOperation.OFF)
-      time.sleep(0.1)  
-  return "BUZZ"
+def post_action(mode, request):
+  data = {}
+  if request.content_length is not None and request.content_length > 0:
+    data = request.get_json()
+  operation = AlarmOperation.ON
+  if 'operation' in data:
+    if data['operation'].lower() == 'off':
+      operation = AlarmOperation.OFF
 
+  with Alarm() as alarm:
+    alarm.sendCommand(mode, operation)
+
+  return jsonify({ "mode": str(mode), "operation": str(operation) })
+
+@app.route('/green', methods=['POST'])
+def green():
+  return post_action(AlarmMode.GREEN, request)
+
+@app.route('/yellow', methods=['POST'])
+def yellow():
+  return post_action(AlarmMode.YELLOW, request)
+
+@app.route('/red', methods=['POST'])
+def red():
+  return post_action(AlarmMode.RED, request)
+
+@app.route('/off', methods=['POST'])
+def off():
+  with Alarm() as alarm:
+    alarm.off()
+  return jsonify({})
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0')
